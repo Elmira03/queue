@@ -1,89 +1,139 @@
 #include "cgi.h"
 #include <cstdlib>
 #include <cstring>
-bool is_get() {
-	size_t realsize;
-	char* value = new char[5];
-	getenv_s(&realsize, value,/*_BufferCount:*/5, "REQUEST_METHOD");
-	bool res = !_strcmpi(value, "GET");
-	delete[] value;
-	return res;
+#include <iostream>
+#include <fstream>
+#include <string>
+#include "queue.h"
+
+using namespace std;
+
+void show_content();
+void show_menu();
+
+void load_data(const char* filename, queue& kredit, queue& vklad);
+
+void show_queue(queue& q);
+
+static vector<string> split(const string& s, char delim);
+
+void main() {
+    cout << "Content-type: text/html; charset=Windows-1251\n\n";
+    ifstream f("_index.html");
+    if (f.is_open()) {
+        auto sz = 65536;
+        auto buf = new char[sz];
+        while (!f.eof()) {
+            f.getline(buf, sz);
+            if (strcmp(buf, "<!--content-->") == 0) {
+                show_content();
+            }
+            else if (!strcmp(buf, "<!--menu-->")) {
+                show_menu();
+            }
+            cout << buf;
+        }
+        delete[] buf;
+        f.close();
+    }
+    else {
+        cout << "Не удалось открыть страницу";
+    }
 }
 
-size_t get_content_lenght() {
-	size_t realsize;
-	char* value = new char[11];
-	getenv_s(&realsize, value, 11, "CONTENT_LENGHT");
-	size_t size;
-	if (!realsize) size = 0;
-	else sscanf_s(value, "%d", &size);
-	delete[] value;
-	return size;
+void show_menu() {
+    ifstream f("menu.html");
+    if (f.is_open()) {
+        auto sz = 1024;
+        auto buf = new char[sz];
+        while (!f.eof()) {
+            f.getline(buf, sz);
+            char* name;
+            char* addrr = strtok_s(buf, " ", &name);
+            cout << "<div class='menu.html'>"
+                "<a href='" << addrr << "'> " <<
+                name << "</a>"
+                "</div>";
+        }
+    }
 }
 
-void get_from_data(char*& data) {
-	delete[] data;
-	if (is_get()) {
-		size_t realsize;
-		char* value = new char[65536];
-		getenv_s(&realsize, value, 65536, "QUERY_STRING"); 
-		data = new char[realsize + 1];
-		strcpy_s(data, realsize + 1, value);
-		delete[]value;
-	}
-	else {
-		size_t buf_size = get_content_lenght();
-		data = new char[buf_size + 1];
-		fread_s(data, buf_size + 1, sizeof(char), buf_size, stdin);
-		data[buf_size] = 0;
-	}
+void main() {
+    setlocale(LC_ALL, "ru");
+    queue kredit;
+    queue vklad;
+    load_data("data.txt", kredit, vklad);
+    cout << "Кредит:\n";
+    show_queue(kredit);
+    cout << "Вклад:\n";
+    show_queue(vklad);
+}
+void load_data(const char* filename, queue& kredit, queue& vklad) {
+    ifstream f(filename);
+    if (f.is_open()) {
+        while (!f.eof()) {
+            char* file = new char[700];
+            f.getline(file, 700);
+            vector<string> date = split(static_cast<string>(file), ' ');
+            string name = date[1];
+            string sex = date[2];
+            int age = stoi(date[3]);
+            string job = date[4];
+            int zp = atof(date[5].c_str());
+            bool kv;
+            if (date[6] == "кредит") enqueue(kredit, name, sex, age, job, zp, true);
+            else  enqueue(vklad, name, sex, age, job, zp, false);
+        }
+        f.close();
+    }
+    else cout << "Файл не найден";
 }
 
-void get_param_value(char*& value, const char* param_name, const char* data) {
-	delete[] value;
-	value = nullptr;
-	char* str = _strdup(data);
-	char* tmp = str;
-	char* cont;
-	while (char* part = strtok_s(tmp, "&", &cont)) {
-		tmp = nullptr;
-		char* val;
-		char* key = strtok_s(part, "=", &val);
-		if (!_strcmpi(param_name, key)) {
-			str_decode(value, val);
-			delete[] str;
-			return;
-		}
-	}
-	delete[] str;
-	value = new char[1];
-	value[0] = 0;
+void show_queue(queue& q) {
+    int i = 0;
+    while (true) {
+        man m;
+        if (dequeue(q, m)) {
+            cout << ++i << ".\t" << m.name << m.sex << m.age << m.job << m.zp;
+            cout << "\tцель обращения: ";
+            if (m.kv) {
+                cout << "кредит" << endl;
+            }
+            else cout << "вклад " << endl;
+        }
+    }
 }
 
-void str_decode(char*& dec_str, const char* enc_str) {
-	char* res = new char[strlen(enc_str) + 1];
-	int i = 0, j = 0;
-	while (enc_str[i]) {
-		if (enc_str[i] == '+') res[j] = ' ';
-		else {
-			if (enc_str[i] == '%') {
-				char ch[3] = { enc_str[i + 1],enc_str[i + 2],0 };
-				int c;
-				sscanf_s(ch, "%X", &c);
-				res[j] = c;
-				i += 2;
-			}
-			else {
-				res[j] = enc_str[i];
-			}
-		}
-		i++;
-		j++;
-	}
-	res[j] = 0;
-	size_t len = strlen(res) + 1;
-	delete[] dec_str;
-	dec_str = new char[len];
-	strcpy_s(dec_str, len, res);
-	delete[] res;
+static vector<string> split(const string& s, char delim) {
+    vector<string> elems;
+    stringstream ss(s);
+    string item;
+    while (getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+void show_content() {
+    cout << "<form method='get' action='index.cgi'>";
+    cout << "Введите список: <input type='text' name='task' maxlenght='80' size='80'<br>";
+    cout << "<input type='submit' value='Проверить'>";
+    cout << "</form>";
+
+
+#ifndef _DEBUG            //проверка на дебаг
+    char* data = nullptr;
+    get_from_data(data);
+#else
+    const char* data = "task=%28%29";
+#endif
+
+    if (data && strlen(data) > 0) {
+        //cout << "<div>" << data << "</div>";
+        char* value = nullptr;
+        get_param_value(value, "task", data); // получить значение 
+        cout << "<div>" << value << "</div>";
+        string t = value;
+    }
+    delete[] data;
 }
